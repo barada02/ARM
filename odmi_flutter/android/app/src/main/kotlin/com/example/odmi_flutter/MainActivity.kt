@@ -18,17 +18,28 @@ class MainActivity: FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+            Log.d("ExecuTorch", "📱 Method called: ${call.method}")
             when (call.method) {
                 "infer" -> {
                     val prompt = call.argument<String>("prompt")
+                    Log.d("ExecuTorch", "🔤 Prompt received: '$prompt'")
                     val output = runInference(prompt ?: "")
+                    Log.d("ExecuTorch", "📤 Sending result: $output")
                     result.success(output)
                 }
                 "loadModel" -> {
                     loadModel()
                     result.success("Model load attempted")
                 }
-                else -> result.notImplemented()
+                "checkModel" -> {
+                    val status = if (model != null) "Model is loaded" else "Model is NOT loaded"
+                    Log.d("ExecuTorch", "🔍 Model status: $status")
+                    result.success(status)
+                }
+                else -> {
+                    Log.d("ExecuTorch", "❌ Unknown method: ${call.method}")
+                    result.notImplemented()
+                }
             }
         }
         
@@ -37,21 +48,32 @@ class MainActivity: FlutterActivity() {
     
     private fun loadModel() {
         try {
+            Log.d("ExecuTorch", "🔄 Starting model load process...")
+            
             // Copy model from assets to internal storage
             val modelFile = File(filesDir, "model.pte")
+            Log.d("ExecuTorch", "📂 Model file path: ${modelFile.absolutePath}")
+            
             if (!modelFile.exists()) {
+                Log.d("ExecuTorch", "📥 Copying model from assets...")
                 val inputStream = assets.open("models/model.pte")
                 val outputStream = FileOutputStream(modelFile)
                 inputStream.copyTo(outputStream)
                 inputStream.close()
                 outputStream.close()
+                Log.d("ExecuTorch", "✅ Model copied to internal storage")
+            } else {
+                Log.d("ExecuTorch", "📄 Model file already exists")
             }
             
+            Log.d("ExecuTorch", "🏗️ Loading model with ExecutorTorch...")
             // Load the model using ExecutorTorch Module
             model = Module.load(modelFile.absolutePath)
-            Log.d("ExecuTorch", "✅ Model loaded successfully from ${modelFile.absolutePath}")
+            Log.d("ExecuTorch", "✅ Model loaded successfully! Model object: ${model != null}")
         } catch (e: Exception) {
             Log.e("ExecuTorch", "❌ Model load failed: ${e.message}")
+            Log.e("ExecuTorch", "📊 Stack trace: ", e)
+            model = null
         }
     }
     
