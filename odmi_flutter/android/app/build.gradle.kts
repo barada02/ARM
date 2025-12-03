@@ -5,7 +5,7 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-val executorch_version = "2.5.0"
+
 
 android {
     namespace = "com.example.odmi_flutter"
@@ -46,7 +46,7 @@ flutter {
 }
 
 dependencies {
-    implementation("org.pytorch:executorch-android:${executorch_version}")
+    implementation(files("libs/executorch.aar"))
     implementation("com.facebook.soloader:soloader:0.10.5")
     implementation("com.facebook.fbjni:fbjni:0.7.0")
 }
