@@ -46,7 +46,8 @@ flutter {
 }
 
 dependencies {
-    implementation(files("libs/executorch.aar"))
+    // Direct local AAR file implementation
+    implementation("org.pytorch:executorch-android:1.0.1")
     implementation("com.facebook.soloader:soloader:0.10.5")
     implementation("com.facebook.fbjni:fbjni:0.7.0")
 }
