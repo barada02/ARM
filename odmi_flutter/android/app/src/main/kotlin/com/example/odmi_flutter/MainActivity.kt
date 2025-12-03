@@ -9,10 +9,14 @@ import org.pytorch.executorch.Tensor
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "executorch/channel"
     private var model: Module? = null
+    
+    // Define the sequence length expected by the model
+    private val SEQUENCE_LENGTH = 128
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -56,11 +60,15 @@ class MainActivity: FlutterActivity() {
             
             if (!modelFile.exists()) {
                 Log.d("ExecuTorch", "📥 Copying model from assets...")
-                val inputStream = assets.open("models/model.pte")
-                val outputStream = FileOutputStream(modelFile)
-                inputStream.copyTo(outputStream)
-                inputStream.close()
-                outputStream.close()
+                // Ensure parent directory exists before attempting to write
+                modelFile.parentFile?.mkdirs() 
+                
+                // Use asset path expected from pubspec.yaml: assets/models/model.pte
+                applicationContext.assets.open("models/model.pte").use { inputStream ->
+                    FileOutputStream(modelFile).use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
                 Log.d("ExecuTorch", "✅ Model copied to internal storage")
             } else {
                 Log.d("ExecuTorch", "📄 Model file already exists")
@@ -70,9 +78,11 @@ class MainActivity: FlutterActivity() {
             // Load the model using ExecutorTorch Module
             model = Module.load(modelFile.absolutePath)
             Log.d("ExecuTorch", "✅ Model loaded successfully! Model object: ${model != null}")
+        } catch (e: IOException) {
+            Log.e("ExecuTorch", "❌ Model file error (check path/permissions): ${e.message}", e)
+            model = null
         } catch (e: Exception) {
-            Log.e("ExecuTorch", "❌ Model load failed: ${e.message}")
-            Log.e("ExecuTorch", "📊 Stack trace: ", e)
+            Log.e("ExecuTorch", "❌ Model load failed: ${e.message}", e)
             model = null
         }
     }
@@ -80,40 +90,65 @@ class MainActivity: FlutterActivity() {
     private fun runInference(prompt: String): String {
         return try {
             model?.let { execModel ->
-                // Create input tensor for the prompt (dummy implementation)
-                val inputTensor = createInputTensor(prompt)
-                val inputEValue = EValue.from(inputTensor)
+                // Create input tensors with CORRECT 2D shape [1, SEQUENCE_LENGTH] and Long type
+                val inputIds = createInputTensor(prompt)
+                val attentionMask = createAttentionMask()
                 
-                // Run forward pass
-                val output = execModel.forward(inputEValue)
+                // Convert to EValue array for multiple inputs
+                val inputs = arrayOf(
+                    EValue.from(inputIds),      // Input 0: input_ids (Long)
+                    EValue.from(attentionMask)  // Input 1: attention_mask (Long)
+                )
+                
+                // Run forward pass with multiple inputs
+                val output = execModel.forward(*inputs)
                 
                 // Process output
                 processOutput(output)
             } ?: "Model not loaded"
         } catch (e: Exception) {
+            Log.e("ExecuTorch", "❌ Inference failed: ${e.message}", e)
             "Inference error: ${e.message}"
         }
     }
     
     private fun createInputTensor(prompt: String): Tensor {
-        // TODO: Implement proper tokenization
-        // For now, create dummy input tensor
-        // Adjust shape based on your model's input requirements
-        val dummyData = FloatArray(128) { it.toFloat() } // Dummy token IDs
-        return Tensor.fromBlob(dummyData, longArrayOf(1, 128)) // [batch_size, seq_len]
+        // TODO: Implement proper tokenization (e.g., using Hugging Face tokenizer)
+        
+        // --- FIX IMPLEMENTED HERE ---
+        // Dummy token IDs as Long. Uses SEQUENCE_LENGTH.
+        // The first input to a transformer model MUST be Long/Int64 type.
+        val inputIds = LongArray(SEQUENCE_LENGTH) { 1L } 
+        
+        // Define the shape as [Batch Size, Sequence Length] -> [1, 128]
+        // This resolves the common type/shape mismatch error.
+        val shape = longArrayOf(1L, SEQUENCE_LENGTH.toLong()) 
+        
+        return Tensor.fromBlob(inputIds, shape)
+    }
+    
+    private fun createAttentionMask(): Tensor {
+        // Attention mask: 1 for real tokens, 0 for padding.
+        // For dummy data, we'll set all to 1 (no padding).
+        val attentionMask = LongArray(SEQUENCE_LENGTH) { 1L } 
+        
+        // Define the shape as [Batch Size, Sequence Length] -> [1, 128]
+        val shape = longArrayOf(1L, SEQUENCE_LENGTH.toLong()) 
+        
+        return Tensor.fromBlob(attentionMask, shape)
     }
     
     private fun processOutput(output: Array<EValue>): String {
         return try {
-            // Get the first output tensor and convert to float array
+            // Assuming the output is a single tensor (e.g., logits)
             val outputTensor = output[0].toTensor()
             val scores = outputTensor.dataAsFloatArray
             
-            // TODO: Implement proper detokenization
+            // TODO: Implement proper detokenization/output interpretation
             // For now, return a simple response based on output
-            "Model response (scores: ${scores.take(5).joinToString(", ")}...)"
+            "Model inferred successfully! (scores: ${scores.take(5).joinToString(", ")}...)"
         } catch (e: Exception) {
-            "Output processing error: ${e.message}"
+             "Output processing error: ${e.message}"
         }
     }
 }
